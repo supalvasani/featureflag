@@ -1,17 +1,33 @@
-import express from "express";
-import connectDB from "./db/mongo"; 
+import 'dotenv/config';
+import app from './app';
+import { connectDB, disconnectDB } from './db/index';
+import { disconnectRedis } from './cache/redis';
 
-const app = express();
-app.use(express.json());
+const PORT = Number(process.env.PORT) || 3000;
 
-// Connect to Database
-connectDB();
+async function start(): Promise<void> {
+  await connectDB();
 
-app.get("/", (req, res) => {
-  res.json({ message: "API working with MongoDB" });
-});
+  const server = app.listen(PORT, () => {
+    console.log(`🚀 Server running on http://localhost:${PORT}`);
+  });
 
-const PORT = 3000;
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+  // ─── Graceful Shutdown ────────────────────────────────────────────────────
+  const shutdown = async (signal: string): Promise<void> => {
+    console.log(`\n${signal} received. Shutting down gracefully...`);
+    server.close(async () => {
+      await disconnectDB();
+      await disconnectRedis();
+      console.log('Shutdown complete.');
+      process.exit(0);
+    });
+  };
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+}
+
+start().catch((err) => {
+  console.error('Failed to start server:', err);
+  process.exit(1);
 });
